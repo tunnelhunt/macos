@@ -1,0 +1,8 @@
+# Swift Package Manager build folder
+.build/
+
+# Package outputs (DMG, ZIP, and App bundles)
+build/
+
+# macOS system metadata
+.DS_Store

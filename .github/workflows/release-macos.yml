@@ -1,0 +1,96 @@
+name: Build and Release macOS Client
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Package macOS Client
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and Package macOS App
+        run: |
+          echo "Building for arm64..."
+          swift build -c release --triple arm64-apple-macosx
+          
+          echo "Building for x86_64..."
+          swift build -c release --triple x86_64-apple-macosx
+          
+          # Prepare App structure
+          APP_DIR="build/Tunnelhunt.app"
+          rm -rf build/
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          
+          echo "Lipo architectures..."
+          lipo -create -output "$APP_DIR/Contents/MacOS/TunnelhuntTray" \
+            .build/arm64-apple-macosx/release/TunnelhuntTray \
+            .build/x86_64-apple-macosx/release/TunnelhuntTray
+          
+          echo "Copying assets..."
+          cp Resources/AppIcon.icns "$APP_DIR/Contents/Resources/"
+          
+          echo "Creating Info.plist..."
+          cat <<EOF > "$APP_DIR/Contents/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.4.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>TunnelhuntTray</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.tunnelhunt.macos-client</string>
+              <key>CFBundleName</key>
+              <string>Tunnelhunt</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>13.0</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          echo "Packaging DMG..."
+          hdiutil create -volname "Tunnelhunt" -srcfolder build/Tunnelhunt.app -ov -format UDZO build/Tunnelhunt.dmg
+          
+          echo "Packaging ZIP..."
+          cd build
+          zip -r Tunnelhunt.zip Tunnelhunt.app
+          cd ..
+
+      - name: Upload Artifacts (Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tunnelhunt-macOS
+          path: |
+            build/Tunnelhunt.dmg
+            build/Tunnelhunt.zip
+
+      - name: Create Release and Upload Assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/Tunnelhunt.dmg
+            build/Tunnelhunt.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
