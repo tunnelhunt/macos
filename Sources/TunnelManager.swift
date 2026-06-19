@@ -28,6 +28,7 @@ class TunnelManager: ObservableObject {
     // Реконнекты
     private var reconnectAttempts: [UUID: Int] = [:]
     private var lifetimeLimitReached: [UUID: Bool] = [:]
+    private var closedFromDashboard: [UUID: Bool] = [:]
     private var lastPresets: [UUID: TunnelPreset] = [:]
     
     // Таймеры таймаута подключения
@@ -82,6 +83,7 @@ class TunnelManager: ObservableObject {
         if !isReconnect {
             reconnectAttempts[presetId] = 0
             lifetimeLimitReached[presetId] = false
+            closedFromDashboard[presetId] = false
         }
         lastPresets[presetId] = preset
         
@@ -238,6 +240,9 @@ class TunnelManager: ObservableObject {
         if text.contains("[Limit]") || text.contains("lifetime limit reached") {
             self.lifetimeLimitReached[presetId] = true
         }
+        if text.contains("[Closed]") || text.contains("Tunnel closed from dashboard") {
+            self.closedFromDashboard[presetId] = true
+        }
         
         // Поддерживаем как .ru, так и любой локальный домен для тестирования
         let pattern = "https://[a-zA-Z0-9.-]+\\.[a-zA-Z0-9.-]+"
@@ -294,6 +299,10 @@ class TunnelManager: ObservableObject {
                 self.tunnelStates[presetId] = .error(message: "Отключено по таймауту для бесплатных тарифов")
                 return
             }
+            if self.closedFromDashboard[presetId] == true {
+                self.tunnelStates[presetId] = .error(message: "Туннель отключен через дашборд")
+                return
+            }
             
             let attempts = self.reconnectAttempts[presetId] ?? 0
             if attempts < 5 {
@@ -326,7 +335,11 @@ class TunnelManager: ObservableObject {
             log("[\(presetId)] Ошибка туннеля: \(errorMsg)")
             self.tunnelStates[presetId] = .error(message: errorMsg)
         } else {
-            self.tunnelStates[presetId] = .inactive
+            if self.closedFromDashboard[presetId] == true {
+                self.tunnelStates[presetId] = .error(message: "Туннель отключен через дашборд")
+            } else {
+                self.tunnelStates[presetId] = .inactive
+            }
         }
     }
     
